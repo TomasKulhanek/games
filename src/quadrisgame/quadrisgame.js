@@ -453,6 +453,11 @@ export class Quadrisgame {
         if (this._canPlace(p, 0, 0, nextRot)) p.rotation = nextRot;
         break;
       }
+      case 'rotateLeft': {
+        const nextRot = (p.rotation + 3) % 4;
+        if (this._canPlace(p, 0, 0, nextRot)) p.rotation = nextRot;
+        break;
+      }
       case 'hardDrop':
         while (this._canPlace(p, 0, 1)) p.y++;
         this._lockPiece();
@@ -490,8 +495,8 @@ export class Quadrisgame {
   }
 
   // ---------- touch input --------------------------------------------------
-  // Tap on the play area (board)  -> hard drop
-  // Tap on the side panel (right) -> rotate
+  // Tap on the play area (board)  -> rotate left
+  // Tap on the side panel (right) -> hard drop
   // Horizontal swipe on the board -> move left / right
   // Downward swipe on the board   -> soft drop
   _bindTouch() {
@@ -537,8 +542,8 @@ export class Quadrisgame {
       e.preventDefault();
     };
     const boardEnd = (e) => {
-      // A tap (little movement) on the play area is a hard drop.
-      if (maxMove < TAP_MAX_MOVE) this._action('hardDrop');
+      // A tap (little movement) on the play area rotates the piece left.
+      if (maxMove < TAP_MAX_MOVE) this._action('rotateLeft');
       e.preventDefault();
     };
 
@@ -550,7 +555,7 @@ export class Quadrisgame {
 
     if (side) {
       const sideTap = (e) => {
-        this._action('rotate');
+        this._action('hardDrop');
         e.preventDefault();
       };
       side.addEventListener('touchstart', sideTap, { passive: false });
