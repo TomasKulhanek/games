@@ -91,19 +91,52 @@ const TETROMINOES = [
   { // S5 - S-shaped pentomino (5 cells)
     color: '#4d7c0f',
     shapes: [
-      [[0,0,0,0,0],[0,1,1,1,0],[0,0,1,1,0],[0,0,0,0,0],[0,0,0,0,0]],
-      [[0,1,0,0,0],[0,1,0,0,0],[0,1,1,0,0],[0,0,1,0,0],[0,0,0,0,0]],
-      [[0,0,0,0,0],[0,1,1,1,0],[0,0,1,1,0],[0,0,0,0,0],[0,0,0,0,0]],
-      [[0,0,0,1,0],[0,0,0,1,0],[0,0,1,1,0],[0,0,1,0,0],[0,0,0,0,0]],
+      [[0,0,0,0,0],
+       [0,1,1,1,0],
+       [0,0,0,1,1],
+       [0,0,0,0,0],
+       [0,0,0,0,0]],
+      [[0,0,0,1,0],
+       [0,0,0,1,0],
+       [0,0,1,1,0],
+       [0,0,1,0,0],
+       [0,0,0,0,0]],
+      [[0,0,0,0,0],
+       [0,0,0,0,0],
+       [0,1,1,0,0],
+       [0,0,1,1,1],
+       [0,0,0,0,0]],
+      [[0,0,0,0,0],
+       [0,0,1,0,0],
+       [0,1,1,0,0],
+       [0,1,0,0,0],
+       [0,1,0,0,0]],
     ]
   },
   { // Z5 - Z-shaped pentomino (5 cells)
     color: '#be185d',
     shapes: [
-      [[0,0,0,0,0],[0,1,1,1,0],[0,1,1,0,0],[0,0,0,0,0],[0,0,0,0,0]],
-      [[0,0,0,0,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,1,1,0],[0,0,1,0,0]],
-      [[0,0,0,0,0],[0,1,1,0,0],[0,1,1,1,0],[0,0,0,0,0],[0,0,0,0,0]],
-      [[0,0,0,0,0],[0,1,0,0,0],[0,1,0,0,0],[0,1,1,0,0],[0,0,1,0,0]],
+      [[0,0,0,0,0],
+       [0,1,1,1,0],
+       [1,1,0,0,0],
+       [0,0,0,0,0],
+       [0,0,0,0,0]],
+      [[0,0,0,0,0],
+       [0,1,0,0,0],
+       [0,1,1,0,0],
+       [0,0,1,0,0],
+       [0,0,1,0,0]],
+      [[0,0,0,0,0],
+       [0,0,1,1,0],
+       [1,1,1,0,0],
+       [0,0,0,0,0],
+       [0,0,0,0,0]],
+      [[0,1,0,0,0],
+       [0,1,0,0,0],
+       [0,1,1,0,0],
+       [0,0,1,0,0],
+       [0,0,0,0,0]],
+      
     ]
   },
   
@@ -151,6 +184,7 @@ export class Quadrisgame {
   _flashStart = 0;
   _fallingCells = [];  // [{ col, color, y (float row), targetRow }]
   _lastFall = 0;
+  _cascade = 1;        // current chain step (1 = first clear, grows per cascade)
 
   // ---------- lifecycle ----------------------------------------------------
 
@@ -204,6 +238,7 @@ export class Quadrisgame {
       this._phase = 'active';
       this._fullRows = [];
       this._fallingCells = [];
+      this._cascade = 1;
       this._next = randomTetromino();
       this._spawnPiece();
       this._bindKeys();
@@ -361,16 +396,33 @@ export class Quadrisgame {
   }
 
   _finalizeClear() {
+    // Settle the survivors into the board at their final positions.
     for (const cell of this._fallingCells) {
       this._board[cell.targetRow][cell.col] = cell.color;
     }
+    this._fallingCells = [];
+
+    // Award score for the rows cleared in this cascade step. Later steps in
+    // the same chain are worth progressively more (combo bonus).
     const cleared = this._fullRows.length;
-    this.score += cleared;
+    this.score += cleared * this._cascade;
     this.level = Math.floor(this.score / 10) + 1;
     this._dropInterval = Math.max(100, 800 - (this.level - 1) * 70);
 
-    this._fallingCells = [];
+    // Gravity may have dropped blocks into brand-new full rows. If so, flash
+    // and clear those too, then let gravity run again — repeat until stable.
+    const next = this._findFullRows();
+    if (next.length > 0) {
+      this._cascade++;
+      this._fullRows = next;
+      this._phase = 'flash';
+      this._flashStart = performance.now();
+      return;
+    }
+
+    // Nothing left to clear: resume normal play.
     this._fullRows = [];
+    this._cascade = 1;
     this._phase = 'active';
     this._lastDrop = performance.now();
     this._spawnPiece();
