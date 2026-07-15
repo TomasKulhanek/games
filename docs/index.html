@@ -2,24 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Document</title>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
-  <meta name="description" content="Description">
+  <title>Web Components for Digital BioSystems</title>
+  <meta name="description" content="Documentation for DBS web components">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
-  <!-- Game web components bundle: defines all <dbs-*> custom elements used in the docs.
-       Loaded before docsify so the elements are ready when markdown renders. -->
+  <link rel="stylesheet" href="assets/buble.css">
+  <style>
+    :root { --theme-color: #2c7a7b; }    
+  </style>
+  <!-- DBS web components bundle: defines all <dbs-*> custom elements used in the docs -->
   <script src="assets/js/dbs-full-bundle.js"></script>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">Loading documentation…</div>
   <script>
     window.$docsify = {
-      name: '',
-      repo: ''
-    }
+      name: 'Games',
+      repo: 'https://github.com/TomasKulhanek/games',
+      homepage: 'index.md',
+      loadSidebar: true,
+      subMaxLevel: 2,
+      auto2top: true,
+      themeColor: '#2c7a7b',
+      // Use the single root _sidebar.md for every (nested) route.
+      alias: {
+        '/.*/_sidebar.md': '/_sidebar.md'
+      }
+    };
   </script>
-  <!-- Docsify v4 -->
-  <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <!-- docsify core -->
+  <script src="assets/docsify.js"></script>
+  <!-- search + copy-to-clipboard -->
+  <script src="assets/search.min.js"></script>
+  <!--script src="assets/docsify-copy-code.js"></script-->
+  <!-- extra syntax highlighting -->
+  <script src="assets/prism-bash.min.js"></script>
+  <script src="assets/prism-json.min.js"></script>
 </body>
 </html>
