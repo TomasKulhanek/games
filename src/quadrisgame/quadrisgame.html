@@ -12,7 +12,7 @@
     <div class="canvas-wrapper">
       <canvas ref="boardCanvas"></canvas>
     </div>
-    <div class="side-panel">
+    <div class="side-panel" ref="sidePanelEl">
       <div>
         <h3>Score</h3>
         <div class="score-value">${score}</div>
@@ -26,10 +26,9 @@
         <canvas class="next-canvas" ref="nextCanvas"></canvas>
       </div>
       <div class="keyboard-hint">
-        ← → Move<br>
-        ↑ Rotate<br>
-        ↓ Soft drop<br>
-        Space Hard drop
+        ← → Move · ↑ Rotate<br>
+        ↓ Soft drop · Space Hard drop<br>
+        <span class="touch-hint">Touch: tap board = drop · tap panel = rotate · swipe = move</span>
       </div>
     </div>
   </div>

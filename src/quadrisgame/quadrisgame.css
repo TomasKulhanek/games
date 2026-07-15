@@ -111,6 +111,10 @@ canvas {
   box-shadow: 0 0 24px #e9456055, inset 0 0 8px #0003;
   background: #0d0d1a;
   image-rendering: pixelated;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .side-panel {
@@ -119,6 +123,10 @@ canvas {
   gap: 16px;
   min-width: 90px;
   padding-top: 8px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .side-panel h3 {
@@ -154,4 +162,17 @@ canvas.next-canvas {
   font-size: 0.72rem;
   color: #666;
   line-height: 1.7;
+}
+
+.touch-hint {
+  display: block;
+  margin-top: 6px;
+  color: #557;
+}
+
+/* Hide touch instructions on devices with a real (mouse) pointer. */
+@media (hover: hover) and (pointer: fine) {
+  .touch-hint {
+    display: none;
+  }
 }

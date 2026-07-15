@@ -159,6 +159,7 @@ export class Quadrisgame {
   containerEl = null;
   boardCanvas = null;
   nextCanvas = null;
+  sidePanelEl = null;
 
   // observable state (bound in template)
   mode = 'intro'; // 'intro' | 'playing' | 'gameover'
@@ -175,6 +176,7 @@ export class Quadrisgame {
   _dropInterval = 800; // ms
   _lastDrop = 0;
   _keyHandler = null;
+  _touchHandlers = null; // { board, boardStart, boardMove, boardEnd, side, sideTap }
   _resizeObserver = null;
   _resizeTimeout = null;
 
@@ -242,6 +244,7 @@ export class Quadrisgame {
       this._next = randomTetromino();
       this._spawnPiece();
       this._bindKeys();
+      this._bindTouch();
       this._lastDrop = performance.now();
       this._loop(performance.now());
     }, 0);
@@ -430,38 +433,51 @@ export class Quadrisgame {
 
   // ---------- key input ----------------------------------------------------
 
-  _bindKeys() {
-    this._keyHandler = (e) => {
-      if (this.mode !== 'playing' || this._phase !== 'active' || !this._current) return;
-      const p = this._current;
-      switch (e.key) {
-        case 'ArrowLeft':
-          if (this._canPlace(p, -1, 0)) p.x--;
-          break;
-        case 'ArrowRight':
-          if (this._canPlace(p, 1, 0)) p.x++;
-          break;
-        case 'ArrowDown':
-          if (this._canPlace(p, 0, 1)) p.y++;
-          else this._lockPiece();
-          break;
-        case 'ArrowUp': {
-          const nextRot = (p.rotation + 1) % 4;
-          if (this._canPlace(p, 0, 0, nextRot)) p.rotation = nextRot;
-          break;
-        }
-        case ' ':
-        case 'Space': {
-          // Hard drop
-          while (this._canPlace(p, 0, 1)) p.y++;
-          this._lockPiece();
-          break;
-        }
-        default:
-          return;
+  // Perform a single game action; shared by keyboard and touch input.
+  _action(type) {
+    if (this.mode !== 'playing' || this._phase !== 'active' || !this._current) return;
+    const p = this._current;
+    switch (type) {
+      case 'left':
+        if (this._canPlace(p, -1, 0)) p.x--;
+        break;
+      case 'right':
+        if (this._canPlace(p, 1, 0)) p.x++;
+        break;
+      case 'softDrop':
+        if (this._canPlace(p, 0, 1)) p.y++;
+        else this._lockPiece();
+        break;
+      case 'rotate': {
+        const nextRot = (p.rotation + 1) % 4;
+        if (this._canPlace(p, 0, 0, nextRot)) p.rotation = nextRot;
+        break;
       }
+      case 'hardDrop':
+        while (this._canPlace(p, 0, 1)) p.y++;
+        this._lockPiece();
+        break;
+      default:
+        return;
+    }
+    this._draw();
+  }
+
+  _bindKeys() {
+    const keyMap = {
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+      ArrowDown: 'softDrop',
+      ArrowUp: 'rotate',
+      ' ': 'hardDrop',
+      Space: 'hardDrop',
+      Spacebar: 'hardDrop',
+    };
+    this._keyHandler = (e) => {
+      const action = keyMap[e.key];
+      if (!action) return;
+      this._action(action);
       e.preventDefault();
-      this._draw();
     };
     document.addEventListener('keydown', this._keyHandler);
   }
@@ -471,6 +487,88 @@ export class Quadrisgame {
       document.removeEventListener('keydown', this._keyHandler);
       this._keyHandler = null;
     }
+  }
+
+  // ---------- touch input --------------------------------------------------
+  // Tap on the play area (board)  -> hard drop
+  // Tap on the side panel (right) -> rotate
+  // Horizontal swipe on the board -> move left / right
+  // Downward swipe on the board   -> soft drop
+  _bindTouch() {
+    const board = this.boardCanvas;
+    const side = this.sidePanelEl;
+    if (!board) return;
+
+    const TAP_MAX_MOVE = 12; // px; a touch that moves less than this is a tap
+    let startX = 0, startY = 0, lastX = 0, lastY = 0, maxMove = 0;
+
+    const boardStart = (e) => {
+      const t = e.changedTouches[0];
+      startX = lastX = t.clientX;
+      startY = lastY = t.clientY;
+      maxMove = 0;
+      e.preventDefault();
+    };
+    const boardMove = (e) => {
+      const t = e.changedTouches[0];
+      maxMove = Math.max(maxMove, Math.hypot(t.clientX - startX, t.clientY - startY));
+      const cs = this._cellSize || 24;
+      const dx = t.clientX - lastX;
+      const dy = t.clientY - lastY;
+      // Slide horizontally to move; slide down to soft drop. Move by however
+      // many whole cells the finger has travelled (keeping the remainder), so
+      // both smooth and coarse/fast swipes track correctly.
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        const steps = Math.trunc(dx / cs);
+        if (steps !== 0) {
+          const dir = steps > 0 ? 'right' : 'left';
+          for (let i = 0; i < Math.abs(steps); i++) this._action(dir);
+          lastX += steps * cs;
+          lastY = t.clientY;
+        }
+      } else {
+        const steps = Math.trunc(dy / cs);
+        if (steps > 0) {
+          for (let i = 0; i < steps; i++) this._action('softDrop');
+          lastY += steps * cs;
+          lastX = t.clientX;
+        }
+      }
+      e.preventDefault();
+    };
+    const boardEnd = (e) => {
+      // A tap (little movement) on the play area is a hard drop.
+      if (maxMove < TAP_MAX_MOVE) this._action('hardDrop');
+      e.preventDefault();
+    };
+
+    board.addEventListener('touchstart', boardStart, { passive: false });
+    board.addEventListener('touchmove', boardMove, { passive: false });
+    board.addEventListener('touchend', boardEnd, { passive: false });
+
+    const handlers = { board, boardStart, boardMove, boardEnd };
+
+    if (side) {
+      const sideTap = (e) => {
+        this._action('rotate');
+        e.preventDefault();
+      };
+      side.addEventListener('touchstart', sideTap, { passive: false });
+      handlers.side = side;
+      handlers.sideTap = sideTap;
+    }
+
+    this._touchHandlers = handlers;
+  }
+
+  _unbindTouch() {
+    const h = this._touchHandlers;
+    if (!h) return;
+    h.board.removeEventListener('touchstart', h.boardStart);
+    h.board.removeEventListener('touchmove', h.boardMove);
+    h.board.removeEventListener('touchend', h.boardEnd);
+    if (h.side) h.side.removeEventListener('touchstart', h.sideTap);
+    this._touchHandlers = null;
   }
 
   // ---------- game loop ----------------------------------------------------
@@ -519,6 +617,7 @@ export class Quadrisgame {
       this._animId = null;
     }
     this._unbindKeys();
+    this._unbindTouch();
   }
 
   _gameOver() {
