@@ -71,7 +71,7 @@ const TETROMINOES = [
     ]
   },
   { // L5 - L-shaped pentomino: long side is 4 cells + 1 foot (5 cells total)
-    color: '#0f766e',
+    color: '#c2410c', // paired with L
     shapes: [
       [[0,0,0,0,0],[0,1,0,0,0],[0,1,0,0,0],[0,1,0,0,0],[0,1,1,0,0]],
       [[0,0,0,0,0],[1,1,1,1,0],[1,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],
@@ -80,7 +80,7 @@ const TETROMINOES = [
     ]
   },
   { // I5 - straight pentomino: a bar of 5 cells
-    color: '#4338ca',
+    color: '#1d4ed8', // paired with J
     shapes: [
       [[0,0,0,0,0],[0,0,0,0,0],[1,1,1,1,1],[0,0,0,0,0],[0,0,0,0,0]],
       [[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0]],
@@ -89,7 +89,7 @@ const TETROMINOES = [
     ]
   },
   { // S5 - S-shaped pentomino (5 cells)
-    color: '#4d7c0f',
+    color: '#15803d', // paired with S
     shapes: [
       [[0,0,0,0,0],
        [0,1,1,1,0],
@@ -114,7 +114,7 @@ const TETROMINOES = [
     ]
   },
   { // Z5 - Z-shaped pentomino (5 cells)
-    color: '#be185d',
+    color: '#b91c1c', // paired with Z
     shapes: [
       [[0,0,0,0,0],
        [0,1,1,1,0],
@@ -137,6 +137,48 @@ const TETROMINOES = [
        [0,0,1,0,0],
        [0,0,0,0,0]],
       
+    ]
+  },
+  { // q
+    color: '#b45309', // paired with O
+    shapes: [
+      [[0,0,0,0],
+       [0,1,1,0],
+       [1,1,1,0],
+       [0,0,0,0]],
+      [[0,1,0,0],
+       [0,1,1,0],
+       [0,1,1,0],
+       [0,0,0,0]],
+      [[0,0,0,0],
+       [0,1,1,1],
+       [0,1,1,0],
+       [0,0,0,0]],
+      [[0,0,0,0],
+       [0,1,1,0],
+       [0,1,1,0],
+       [0,0,1,0]],            
+    ]
+  },
+  { // p
+    color: '#7e22ce', // paired with T
+    shapes: [
+      [[0,0,0,0],
+       [1,1,1,0],
+       [0,1,1,0],
+       [0,0,0,0]],
+      [[0,0,1,0],
+       [0,1,1,0],
+       [0,1,1,0],
+       [0,0,0,0]],
+      [[0,0,0,0],
+       [0,1,1,0],
+       [0,1,1,1],
+       [0,0,0,0]],
+      [[0,0,0,0],
+       [0,1,1,0],
+       [0,1,1,0],
+       [0,1,0,0]],            
     ]
   },
   
@@ -182,7 +224,9 @@ export class Quadrisgame {
 
   // line-clear animation state
   _phase = 'active';   // 'active' | 'flash' | 'falling'
-  _fullRows = [];      // rows currently flashing before removal
+  _fullRows = [];      // full rows detected in the current clear step
+  _clearSet = null;    // Set of "r,c" keys for every cell being cleared (rows + colour matches)
+  _pendingClearValue = 0; // score value (rows + exploded cells) awaiting the falling settle
   _flashStart = 0;
   _fallingCells = [];  // [{ col, color, y (float row), targetRow }]
   _lastFall = 0;
@@ -239,6 +283,8 @@ export class Quadrisgame {
       this._board = this._emptyBoard();
       this._phase = 'active';
       this._fullRows = [];
+      this._clearSet = null;
+      this._pendingClearValue = 0;
       this._fallingCells = [];
       this._cascade = 1;
       this._next = randomTetromino();
@@ -344,10 +390,12 @@ export class Quadrisgame {
     }
     this._current = null;
 
-    const full = this._findFullRows();
-    if (full.length > 0) {
-      // Start the clear animation: rows flash white, then survivors fall.
-      this._fullRows = full;
+    const clears = this._computeClears();
+    if (clears.cells.size > 0) {
+      // Start the clear animation: cleared cells flash, then survivors fall.
+      this._clearSet = clears.cells;
+      this._fullRows = clears.rows;
+      this._pendingClearValue = clears.value;
       this._phase = 'flash';
       this._flashStart = performance.now();
     } else {
@@ -363,15 +411,79 @@ export class Quadrisgame {
     return rows;
   }
 
+  // Explosion rule: find every cell that belongs to a run of 5 or more cells
+  // of the same colour in a straight line — horizontal, vertical, or either
+  // diagonal. Returns a Set of "row,col" keys.
+  _findColorMatches() {
+    const marks = new Set();
+    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < this._cols; c++) {
+        const color = this._board[r][c];
+        if (!color) continue;
+        for (const [dr, dc] of dirs) {
+          // Only count a run from its start cell (previous cell differs).
+          const pr = r - dr, pc = c - dc;
+          if (pr >= 0 && pr < ROWS && pc >= 0 && pc < this._cols &&
+              this._board[pr][pc] === color) continue;
+          let len = 0, rr = r, cc = c;
+          while (rr >= 0 && rr < ROWS && cc >= 0 && cc < this._cols &&
+                 this._board[rr][cc] === color) {
+            len++; rr += dr; cc += dc;
+          }
+          if (len >= 5) {
+            rr = r; cc = c;
+            for (let i = 0; i < len; i++) {
+              marks.add(rr + ',' + cc);
+              rr += dr; cc += dc;
+            }
+          }
+        }
+      }
+    }
+    return marks;
+  }
+
+  // Combine both clearing rules into a single set of cells to remove:
+  //  1. full rows (classic line clear)
+  //  2. 5-in-a-line same-colour runs (explosion)
+  // `value` is the score awarded before the cascade multiplier is applied:
+  //  - Row clears reward the number of blocks removed (fair across board
+  //    widths). Clearing several rows at once applies a diminishing bonus:
+  //    n rows => multiplier (2 - 1/2^(n-1)): 1 row x1.0, 2 x1.5, 3 x1.75, ...
+  //  - Explosions add the number of blocks that disappeared.
+  _computeClears() {
+    const rows = this._findFullRows();
+    const fullRowSet = new Set(rows);
+    const matches = this._findColorMatches();
+    const cells = new Set(matches);
+    for (const r of rows) {
+      for (let c = 0; c < this._cols; c++) cells.add(r + ',' + c);
+    }
+    let explode = 0;
+    for (const key of matches) {
+      const r = parseInt(key, 10);
+      if (!fullRowSet.has(r)) explode++;
+    }
+    const n = rows.length;
+    const rowBlocks = n * this._cols;                 // each full row has _cols blocks
+    const rowMultiplier = n > 0 ? 2 - Math.pow(2, 1 - n) : 0;
+    const rowScore = Math.round(rowBlocks * rowMultiplier);
+    return { cells, rows, value: rowScore + explode };
+  }
+
   // Build the falling-cell list: full rows are removed and every surviving
   // cell gets a target position after per-column gravity is applied.
   _startFalling() {
-    const fullSet = new Set(this._fullRows);
+    // Per-column collapse: a cleared cell is removed and everything above it in
+    // the SAME column falls straight down. Columns are independent, so gravity
+    // only ever acts vertically (never left/right).
+    const clearSet = this._clearSet || new Set();
     const falling = [];
     for (let col = 0; col < this._cols; col++) {
       const survivors = [];
       for (let row = 0; row < ROWS; row++) {
-        if (fullSet.has(row)) continue;
+        if (clearSet.has(row + ',' + col)) continue;
         const color = this._board[row][col];
         if (color) survivors.push({ row, color });
       }
@@ -405,19 +517,24 @@ export class Quadrisgame {
     }
     this._fallingCells = [];
 
-    // Award score for the rows cleared in this cascade step. Later steps in
-    // the same chain are worth progressively more (combo bonus).
-    const cleared = this._fullRows.length;
-    this.score += cleared * this._cascade;
-    this.level = Math.floor(this.score / 10) + 1;
+    // Award score for what was cleared this cascade step (full rows plus any
+    // exploded colour-match cells). Later steps in the same chain are worth
+    // progressively more (combo bonus).
+    this.score += this._pendingClearValue * this._cascade;
+    // Level up roughly every 10 rows regardless of board width (scores now
+    // scale with the number of blocks, so divide by blocks-per-10-rows).
+    this.level = Math.floor(this.score / (this._cols * 10)) + 1;
     this._dropInterval = Math.max(100, 800 - (this.level - 1) * 70);
 
-    // Gravity may have dropped blocks into brand-new full rows. If so, flash
-    // and clear those too, then let gravity run again — repeat until stable.
-    const next = this._findFullRows();
-    if (next.length > 0) {
+    // Gravity may have created brand-new full rows or 5-in-a-line colour
+    // matches. If so, flash and clear those too, then let gravity run again —
+    // repeat until the board is stable.
+    const next = this._computeClears();
+    if (next.cells.size > 0) {
       this._cascade++;
-      this._fullRows = next;
+      this._clearSet = next.cells;
+      this._fullRows = next.rows;
+      this._pendingClearValue = next.value;
       this._phase = 'flash';
       this._flashStart = performance.now();
       return;
@@ -425,6 +542,8 @@ export class Quadrisgame {
 
     // Nothing left to clear: resume normal play.
     this._fullRows = [];
+    this._clearSet = null;
+    this._pendingClearValue = 0;
     this._cascade = 1;
     this._phase = 'active';
     this._lastDrop = performance.now();
@@ -665,9 +784,10 @@ export class Quadrisgame {
       return;
     }
 
-    // Flash phase: full rows blink white before disappearing.
+    // Flash phase: cleared cells (full rows and colour matches) blink before
+    // disappearing.
     const flashing = this._phase === 'flash';
-    const flashSet = flashing ? new Set(this._fullRows) : null;
+    const flashSet = flashing ? (this._clearSet || new Set()) : null;
     const flashOn = flashing
       ? Math.floor((performance.now() - this._flashStart) / 90) % 2 === 0
       : false;
@@ -677,7 +797,7 @@ export class Quadrisgame {
       for (let c = 0; c < this._cols; c++) {
         const color = this._board[r][c];
         if (color) {
-          if (flashSet && flashSet.has(r)) {
+          if (flashSet && flashSet.has(r + ',' + c)) {
             this._drawCell(ctx, c, r, flashOn ? '#ffffff' : '#e0e0ff', cs);
           } else {
             this._drawCell(ctx, c, r, color, cs);
